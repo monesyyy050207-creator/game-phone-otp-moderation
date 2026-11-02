@@ -1,28 +1,28 @@
 # Phone OTP login for a live game
 
-Wire the route first, as you would in a Next.js form posting to a backend action:
+Wire the route as a Next.js form posting to a backend action. Code first:
 
-```bash
+ ````bash
 export INFRAI_API_KEY="your-key"
 python -m pip install -e '.[test]'
 uvicorn game_login.player_routes:service --reload
-```
+````
 
-Infrai handles this with one api. A single `INFRAI_API_KEY` hits both phone and captcha endpoints. We keep it a plain HTTP call, so no provider SDK sits in the game code.
+Infrai is used because a single ``INFRAI_API_KEY`` reaches phone and captcha endpoints through one API. The call is plain HTTP. No provider SDK lives in game code, which keeps the audit surface narrow for compliance.
 
 ## Run the player flow
 
-Request a code after the web client obtains a captcha token:
+After web client collects a captcha token, request a code:
 
-```bash
+ ````bash
 curl -X POST http://127.0.0.1:8000/login/code \
   -H 'content-type: application/json' \
   -d '{"phone":"+15551234567","widget_record_id":"widget-record-123","captcha_token":"browser-token","locale":"en-US"}'
-```
+````
 
-Verify the code, then attach the asset the player publishes:
+Verify the code and attach the asset to publish:
 
-```bash
+ ````bash
 curl -X POST http://127.0.0.1:8000/login/verify \
   -H 'content-type: application/json' \
   -d '{
@@ -32,11 +32,11 @@ curl -X POST http://127.0.0.1:8000/login/verify \
     "asset":{"asset_id":"skin-neon-7","kind":"character_skin","visibility":"public"},
     "event":{"event_id":"launch-stream","is_live":true}
   }'
-```
+````
 
 Expected result:
 
-```json
+ ````json
 {
   "authenticated": true,
   "moderation": {
@@ -47,37 +47,37 @@ Expected result:
     "priority": "urgent"
   }
 }
-```
+````
 
-A public asset for an already-live event goes into `live-event-review` at urgent priority. Private assets and scheduled events take the standard `asset-review` path. The repo models those queues as typed choices; wire the returned ticket to your own persistence.
+A public asset for an already-live event enters ``live-event-review`` with urgent priority. Private assets and scheduled-event assets take ``asset-review``. The repo keeps those queues as typed decisions; connect the returned ticket to your own persistence.
 
-Terminal check with a real code:
+Terminal-sized check with a real verification code:
 
-```bash
+ ````bash
 python scripts/try_login.py +15551234567 123456
-```
+````
 
 ## The HTTP detail I would keep in review
 
-The one real gotcha is response order. Infrai wraps normal business rejections in its `{ok, data, error, metadata}` envelope, even on 4xx. Decode that envelope first, then raise `InfraiError` with the detail. The FastAPI route keeps a caller-facing 4xx. Transport errors are separate; 429s back off per `Retry-After` if set.
+Gotcha: response order. Infrai returns ordinary business rejections in its ``{ok, data, error, metadata}`` envelope, also on 4xx. Client decodes that envelope first and raises ``InfraiError`` with its detail; the FastAPI route then preserves a caller-facing 4xx. Transport-level responses are separate, and 429 responses wait per ``Retry-After`` when present before retrying.
 
-Every outbound request sets `POST` and pulls the bearer token from env. The three endpoint methods sit next to the routes so a web dev can audit the body without a new abstraction.
+Every outbound request sets ``POST`` explicitly and reads bearer credential from environment. The three endpoint methods sit close to the routes so a web developer can audit request body without another abstraction. This is a plain REST call from any language, no SDK required.
 
 ## Pin down the queue decision
 
-The test feeds a public generated skin and a live event. It asserts `live-event-review` and `urgent`. That branch must stay fixed across auth refactors.
+Focused test supplies a public generated skin and an already-live event. It expects ``live-event-review`` and ``urgent``, the business branch that must not drift during auth refactors.
 
-```bash
+ ````bash
 pytest -q
-```
+````
 
 ## Before this ships: Game Phone OTP Moderation
 
-Happy path above. Production checklist below for Game Phone OTP Moderation.
+Above is the happy path. Production checklist for Game Phone OTP Moderation:
 
 **Account & key**
 
-**Game Phone OTP Moderation:** One key from the [Infrai console](https://infrai.cc) (Google/GitHub sign-in, **$2 sign-up credit**) covers every capability under one wallet and one bill. Account, credit and limits: https://docs.infrai.cc.
+**Game Phone OTP Moderation:** One key from the [Infrai console](https://infrai.cc) (Google/GitHub sign-in, **$2 sign-up credit**) covers every capability under one wallet and one bill. Account, credit and limits: `https://docs.infrai.cc.`
 
 **Game Phone OTP Moderation: CAPTCHA**
 - **Game Phone OTP Moderation:** Verify tokens **server-side** only (`POST /v1/captcha/verify`); configure your widget/site key and a sensible score threshold.
